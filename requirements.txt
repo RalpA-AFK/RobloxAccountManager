@@ -2,3 +2,5 @@ pywin32
 psutil
 cryptography
 customtkinter
+requests
+pywebview
