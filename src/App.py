@@ -2,6 +2,8 @@ import customtkinter as ctk
 import threading
 import multiprocessing
 import webbrowser
+
+import requests
 from account_manager import AccountManager
 from termination_manager import terminate_all_roblox
 
@@ -231,12 +233,68 @@ class App(ctk.CTk):
     def launch_account_thread(self, slot_index):
         def task():
             self.after(0, lambda: self.status_label.configure(text=f"Status: Launching account slot #{slot_index}..."))
-            success = self.account_manager.launch_account(slot_index)
+            success, reason = self.account_manager.launch_account(slot_index)
             if success:
                 self.after(0, lambda: self.status_label.configure(text=f"Status: Slot #{slot_index} launched successfully!"))
+            elif reason == "expired":
+                self.after(0, lambda: self.status_label.configure(text=f"Status: Slot #{slot_index} has an expired cookie."))
+                
+                self.after(0, lambda: self.prompt_reauth_for_slot(slot_index))
             else:
-                self.after(0, lambda: self.status_label.configure(text=f"Status: Failed to launch slot #{slot_index}."))
+                self.after(0, lambda: self.status_label.configure(text=f"Status: Launch failed ({reason})."))
         threading.Thread(target=task, daemon=True).start()
+
+    def prompt_reauth_for_slot(self, slot_index):
+        dialog = ctk.CTkInputDialog(
+            text = f"The cookie for slot #{slot_index} has expired. \n Please enter your updated .ROBLOSECURITY cookie:",
+            title = "Re-authentication Required for Slot #{slot_index}" 
+        )
+        raw_cookie = dialog.get_input()
+
+        if not raw_cookie:
+            self.status_label.configure(text=f"Status: Re-authentication cancelled for slot #{slot_index}")
+            return
+
+        acc = self.account_manager.db.get_account(slot_index)
+        if not acc: 
+            return
+
+        expected_username = acc["username"]
+        current_label = acc.get("custom_Label", f"Slot #{slot_index}") if acc else f"Slot #{slot_index}"
+
+        self.status_label.configure(text=f"Status: Validating new cookie for Slot #{slot_index}")
+
+        test_cookies = {".ROBLOSECURITY": raw_cookie.strip()}
+        test_headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        try: 
+            response = requests.get(
+                "https://users.roblox.com/v1/users/authenticated",
+                cookies=test_cookies,
+                headers=test_headers,
+                timeout=10
+            )
+            if response.status_code != 200:
+                self.status_label.configure(text = "Status:Re-auth failed. The provided cookie is invalid or expired.")
+                return 
+
+            user_data = response.json()
+            pasted_username = user_data.get("name")
+
+            if pasted_username.lower() != expected_username.lower():
+                self.status_label.configure(text = f"Status: Error! Cookie belongs to @{pasted_username}")
+                return
+        except Exception as e: 
+            self.status_label.configure(text=f"Status: Validation error: {str(e)}")
+            return 
+        
+        success, message = self.account_manager.link_manual_account(slot_index, raw_cookie, current_label)
+
+        self.status_label.configure(text=f"Status: {message}")
+
+        if(success):
+            self.refresh_account_ui()
+
+            self.launch_account_thread(slot_index)
 
     def terminate_single_pid_action(self, pid):
         from termination_manager import terminate_single_pid

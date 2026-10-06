@@ -137,7 +137,7 @@ class AccountManager:
         
         account = self.db.get_account(slot_id)
         if not account:
-            return False
+            return False, "not_found"
 
         cookie = account["cookie"]
         headers = {
@@ -155,7 +155,7 @@ class AccountManager:
             )
             csrf_token = csrf_resp.headers.get("x-csrf-token")
             if not csrf_token:
-                return False
+                return False, "expired" 
 
             # 2. Get Authentication Ticket
             headers["x-csrf-token"] = csrf_token
@@ -165,7 +165,7 @@ class AccountManager:
             )
             ticket = ticket_resp.headers.get("rbx-authentication-ticket")
             if not ticket:
-                return False
+                return False, "ticket_error"
 
             # 3. Launch protocol handler
             launch_url = f"roblox-player:1+launchmode:app+gameinfo:{ticket}"
@@ -186,12 +186,26 @@ class AccountManager:
                 new_pids = [p for p in current_pids if p not in pids_before]
                 target_pid = new_pids[-1] if new_pids else current_pids[-1]
 
-                # Aggressively clear the mutex handle multiple times to ensure it stays deleted
-                for attempt in range(6):
+                consecutive_clean_checks = 0
+                start_time = time.time()
+
+                while time.time() - start_time < 30.0:
+                    if target_pid not in get_roblox_pids():
+                        break
+
                     success = close_singleton_handle(target_pid)
                     if success:
-                        print(f"[DEBUG] Post-init singleton handle successfully snipped on attempt {attempt + 1} for PID {target_pid}")
-                    time.sleep(0.8)
+                        consecutive_clean_checks += 1
+                        print(f"[DEBUG] Singleton handle snipped successfully on PID {target_pid}. Clean checks: {consecutive_clean_checks}/3")
+                    else:
+                        consecutive_clean_checks = 0
+                        print(f"[DEBUG] Failed to snip singleton handle on PID {target_pid}. Resetting clean checks.") 
+                    active_count = len([p for p in get_roblox_pids()])
+                    if consecutive_clean_checks >= 3:
+                        if active_count >= 2:
+                            print(f"[DEBUG] Multi-instance concurrency confirmed stable for PID {target_pid}")
+                            break
+                    time.sleep(2.5)
 
                 # Map PID and declare parent if needed
                 self.active_slots[slot_id] = target_pid
@@ -205,7 +219,9 @@ class AccountManager:
 
             threading.Thread(target=_delayed_handle_release, daemon=True).start()
             
-            return True
+            return True, "success"
+        except requests.exceptions.Timeout:
+            return False, "error: Request timed out. Please check your internet connection."
         except Exception as e:
             print(f"[!] Launch error: {e}")
-            return False
+            return False, f"error: {str(e)}" 

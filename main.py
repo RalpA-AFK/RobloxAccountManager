@@ -9,6 +9,6 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
     
-    from gui import App
+    from App import App
     app = App()
     app.mainloop()
