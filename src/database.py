@@ -60,6 +60,14 @@ class DatabaseManager:
                     value TEXT
                 )
             """)
+            
+            # Automatically seed a default Xbox account slot into new databases if empty
+            cursor = conn.execute("SELECT COUNT(*) FROM accounts")
+            if cursor.fetchone()[0] == 0:
+                conn.execute("""
+                    INSERT INTO accounts (slot_index, username, display_name, encrypted_cookie, custom_label)
+                    VALUES (1, 'Xbox Account', 'Xbox App', '', '')
+                """)
             conn.commit()
 
     def save_account(self, slot_index: int, username: str, display_name: str, cookie: str, custom_label: str = ""):

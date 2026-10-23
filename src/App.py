@@ -15,7 +15,7 @@ class App(ctk.CTk):
         self.account_manager = AccountManager(on_account_update=self.safe_refresh_ui)
 
         self.title("Kaizen Codes - Roblox Account Manager")
-        self.geometry("650x540")
+        self.geometry("650x500")
         self.resizable(False, False)
         self.configure(fg_color="#0a0a0a")
 
@@ -46,26 +46,26 @@ class App(ctk.CTk):
         # --- Content Area Frame ---
         self.content_frame = ctk.CTkFrame(
             self, fg_color="#121212", border_color="#00FF66", border_width=1, 
-            corner_radius=8, width=610, height=350
+            corner_radius=8, width=610, height=380
         )
         self.content_frame.place(x=20, y=65)
 
         # Scrollable container inside content area
         self.account_scroll_frame = ctk.CTkScrollableFrame(
-            self.content_frame, fg_color="transparent", width=580, height=270
+            self.content_frame, fg_color="transparent", width=580, height=300
         )
         self.account_scroll_frame.place(x=15, y=15)
 
         # --- Bottom Control Area ---
-        self.bottom_action_frame = ctk.CTkFrame(self, fg_color="transparent", width=610, height=75)
-        self.bottom_action_frame.place(x=20, y=425)
+        self.bottom_action_frame = ctk.CTkFrame(self, fg_color="transparent", width=610, height=35)
+        self.bottom_action_frame.place(x=20, y=455)
 
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(
             self, text="Status: Idle | Monitoring instances...", 
             font=ctk.CTkFont(size=11, weight="bold"), text_color="#00FF66"
         )
-        self.status_label.place(x=20, y=510)
+        self.status_label.place(x=20, y=515)
 
         self.is_launching_lock = False
 
@@ -104,22 +104,20 @@ class App(ctk.CTk):
     def render_accounts_tab(self, instances):
         if not instances:
             empty_lbl = ctk.CTkLabel(
-                self.account_scroll_frame, text="No active accounts or Xbox instances detected.\nLaunch an account or Xbox version to begin.",
+                self.account_scroll_frame, text="No active accounts detected.\nLaunch an account to begin.",
                 text_color="#666666", font=ctk.CTkFont(size=11)
             )
             empty_lbl.pack(pady=80)
         else:
             for inst in instances:
                 slot_idx = inst["slot_index"]
-                username = inst["username"]
-                custom_label = inst["custom_label"]
+                display_name = inst["display_name"]
                 is_active = inst["is_active"]
                 state = inst["state"]
                 pid = inst["pid"]
                 is_xbox = inst.get("is_xbox", False)
                 
                 is_parent = (not is_xbox and slot_idx == self.account_manager.parent_slot_id)
-                display_name = custom_label if custom_label else username
 
                 if is_xbox:
                     row_border = "#ffaa00"
@@ -163,51 +161,28 @@ class App(ctk.CTk):
                 status_badge.pack(side="left", padx=5, pady=8)
 
                 btn_state = "disabled" if self.is_launching_lock else "normal"
-                if is_xbox:
-                    if is_active and pid != 0:
-                        kill_btn = ctk.CTkButton(
-                            row_frame, text="Close", font=ctk.CTkFont(size=10, weight="bold"),
-                            width=65, height=26, fg_color="#4d0000", hover_color="#800000",
-                            text_color="#ff9999", state=btn_state,
-                            command=lambda p=pid: self.terminate_single_pid_action(p)
-                        )
-                        kill_btn.pack(side="right", padx=10, pady=8)
-                    else:
-                        idle_lbl = ctk.CTkLabel(
-                            row_frame, text="Ready", font=ctk.CTkFont(size=10, weight="bold"),
-                            text_color="#ffaa00", width=65
-                        )
-                        idle_lbl.pack(side="right", padx=10, pady=8)
+                if is_active and pid != 0:
+                    kill_btn = ctk.CTkButton(
+                        row_frame, text="Close", font=ctk.CTkFont(size=10, weight="bold"),
+                        width=65, height=26, fg_color="#4d0000", hover_color="#800000",
+                        text_color="#ff9999", state=btn_state,
+                        command=lambda p=pid: self.terminate_single_pid_action(p)
+                    )
+                    kill_btn.pack(side="right", padx=10, pady=8)
                 else:
-                    if is_active and pid != 0:
-                        kill_btn = ctk.CTkButton(
-                            row_frame, text="Close", font=ctk.CTkFont(size=10, weight="bold"),
-                            width=65, height=26, fg_color="#4d0000", hover_color="#800000",
-                            text_color="#ff9999", state=btn_state,
-                            command=lambda p=pid: self.terminate_single_pid_action(p)
-                        )
-                        kill_btn.pack(side="right", padx=10, pady=8)
-                    else:
-                        launch_btn = ctk.CTkButton(
-                            row_frame, text="Launch", font=ctk.CTkFont(size=10, weight="bold"),
-                            width=65, height=26, fg_color="#002b11", hover_color="#004d1f",
-                            text_color="#00FF66", state=btn_state,
-                            command=lambda idx=slot_idx: self.launch_account_thread(idx)
-                        )
-                        launch_btn.pack(side="right", padx=10, pady=8)
+                    launch_btn = ctk.CTkButton(
+                        row_frame, text="Launch", font=ctk.CTkFont(size=10, weight="bold"),
+                        width=65, height=26, fg_color="#332200" if is_xbox else "#002b11", 
+                        hover_color="#664400" if is_xbox else "#004d1f",
+                        text_color="#ffaa00" if is_xbox else "#00FF66", state=btn_state,
+                        command=lambda idx=slot_idx: self.launch_account_thread(idx)
+                    )
+                    launch_btn.pack(side="right", padx=10, pady=8)
 
-        # --- Bottom Action Buttons for Accounts Tab ---
-        btn_xbox = ctk.CTkButton(
-            self.bottom_action_frame, text="LAUNCH ROBLOX (XBOX VERSION)", font=ctk.CTkFont(size=11, weight="bold"),
-            width=610, height=30, corner_radius=6, fg_color="#332200",
-            hover_color="#664400", border_color="#ffaa00", border_width=1,
-            text_color="#ffaa00", command=self.launch_xbox_thread
-        )
-        btn_xbox.pack(fill="x", pady=(0, 4))
-
+        # --- Terminate All Button at bottom ---
         btn_terminate_all = ctk.CTkButton(
             self.bottom_action_frame, text="TERMINATE ALL INSTANCES", font=ctk.CTkFont(size=11, weight="bold"),
-            width=610, height=30, corner_radius=6, fg_color="#3d0000",
+            width=610, height=32, corner_radius=6, fg_color="#3d0000",
             hover_color="#660000", border_color="#ff3333", border_width=1,
             text_color="#ff3333", command=self.terminate_all_roblox_thread
         )
@@ -232,10 +207,9 @@ class App(ctk.CTk):
 
         for inst in instances:
             slot_idx = inst["slot_index"]
-            username = inst["username"]
             custom_label = inst["custom_label"]
             is_xbox = inst.get("is_xbox", False)
-            display_name = custom_label if custom_label else username
+            display_name = inst["display_name"]
 
             row_frame = ctk.CTkFrame(
                 self.account_scroll_frame, fg_color="#1a1a1a", 
@@ -250,7 +224,7 @@ class App(ctk.CTk):
             )
             slot_lbl.pack(side="left", padx=(10, 5), pady=8)
 
-            name_text = f"{display_name} (Xbox Slot)" if is_xbox else f"{display_name} (@{username})"
+            name_text = f"{display_name} (Xbox Slot)" if is_xbox else f"{display_name} (@{inst['username']})"
             name_lbl = ctk.CTkLabel(
                 row_frame, text=name_text, font=ctk.CTkFont(size=11),
                 text_color="#cccccc", width=240, anchor="w"
@@ -367,14 +341,6 @@ class App(ctk.CTk):
                 self.after(0, lambda: self.status_label.configure(text=f"Status: Launch failed ({reason})."))
                 
         threading.Thread(target=task, daemon=True).start()
-
-    def launch_xbox_action(self):
-        self.status_label.configure(text="Status: Launching Roblox Xbox version...")
-        success, msg = self.account_manager.launch_xbox_roblox()
-        self.status_label.configure(text=f"Status: {msg}")
-
-    def launch_xbox_thread(self):
-        threading.Thread(target=self.launch_xbox_action, daemon=True).start()
 
     def terminate_single_pid_action(self, pid):
         from termination_manager import terminate_single_pid

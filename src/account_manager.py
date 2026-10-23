@@ -33,7 +33,7 @@ class AccountManager:
                         last_pids = current_pids
                         if self.on_account_update:
                             self.on_account_update()
-                except Exception as e:
+                except Exception:
                     pass
                 time.sleep(2)
         threading.Thread(target=_watcher_loop, daemon=True).start()
@@ -56,7 +56,8 @@ class AccountManager:
         
         for acc in accounts:
             slot_id = acc["slot_index"]
-            is_xbox = not acc.get("cookie") or acc.get("cookie") == ""
+            cookie = acc.get("cookie", "")
+            is_xbox = (not cookie or cookie == "")
             
             if is_xbox:
                 pid = self.xbox_slots.get(slot_id, 0)
@@ -72,11 +73,14 @@ class AccountManager:
                 is_running = pid in xbox_pids if pid != 0 else False
                 state = "Active: Focus" if pid == focused_pid else ("Active: Idle" if is_running else "Closed")
                 
+                label = acc.get("custom_label", "")
+                display_name = f"Xbox Account : {label}" if label else "Xbox Account"
+                
                 instances.append({
                     "slot_index": slot_id,
-                    "username": "Xbox Instance",
-                    "display_name": f"PID: {pid}" if pid != 0 else "Xbox App",
-                    "custom_label": acc.get("custom_label", f"Xbox Slot #{slot_id}"),
+                    "username": "Xbox Account",
+                    "display_name": display_name,
+                    "custom_label": label,
                     "is_active": is_running,
                     "state": state,
                     "pid": pid,
@@ -108,15 +112,15 @@ class AccountManager:
         """Dynamically finds and launches the Roblox Microsoft Store / Xbox app cleanly via Appx package data."""
         try:
             ps_cmd = (
-            "$pkg = Get-AppxPackage -Name '*Roblox*'; "
-            "if ($pkg) { "
-            "    $manifest = [xml](Get-AppxPackageManifest -Package $pkg); "
-            "    $appId = $manifest.Package.Applications.Application.Id; "
-            "    $pfn = $pkg.PackageFamilyName; "
-            "    Start-Process 'explorer.exe' \"shell:AppsFolder\\${pfn}!${appId}\"; "
-            "} else { "
-            "    throw 'Roblox Microsoft Store app not found'; "
-            "}"
+                "$pkg = Get-AppxPackage -Name '*Roblox*'; "
+                "if ($pkg) { "
+                "    $manifest = [xml](Get-AppxPackageManifest -Package $pkg); "
+                "    $appId = $manifest.Package.Applications.Application.Id; "
+                "    $pfn = $pkg.PackageFamilyName; "
+                "    Start-Process 'explorer.exe' \"shell:AppsFolder\\${pfn}!${appId}\"; "
+                "} else { "
+                "    throw 'Roblox Microsoft Store app not found'; "
+                "}"
             )
             result = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=5)
         
@@ -125,7 +129,7 @@ class AccountManager:
 
             if self.on_account_update:
                 self.on_account_update()
-                return True, "Successfully launched Roblox Xbox version!"
+            return True, "Successfully launched Roblox Xbox version!"
         except Exception as e:
             return False, f"Failed to launch Xbox Roblox: {str(e)}"
 
@@ -165,15 +169,18 @@ class AccountManager:
             return False, f"Validation error: {str(e)}"
 
     def launch_account(self, slot_id: int):
+        account = self.db.get_account(slot_id)
+        if not account:
+            return False, "not_found"
+
+        cookie = account.get("cookie", "")
+        # If cookie is empty, this is the Xbox account slot! Launch Xbox Roblox instead.
+        if not cookie or cookie == "":
+            return self.launch_xbox_roblox()
+
         print(f"\n[DEBUG] --- Starting launch sequence for Slot #{slot_id} ---")
         self.launch_in_progress = True
         
-        account = self.db.get_account(slot_id)
-        if not account:
-            self.launch_in_progress = False
-            return False, "not_found"
-
-        cookie = account["cookie"]
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Referer": "https://www.roblox.com/"
