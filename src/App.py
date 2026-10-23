@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import threading
+import time
 import webbrowser
 from account_manager import AccountManager
 from termination_manager import terminate_all_roblox
@@ -105,7 +106,7 @@ class App(ctk.CTk):
     def render_accounts_tab(self, instances):
         if not instances:
             empty_lbl = ctk.CTkLabel(
-                self.account_scroll_frame, text="No accounts linked yet.\nSwitch to 'Account Manager' to add accounts.",
+                self.account_scroll_frame, text="No active accounts or external instances detected.\nLaunch an account or open an Xbox instance to begin.",
                 text_color="#666666", font=ctk.CTkFont(size=11)
             )
             empty_lbl.pack(pady=80)
@@ -117,11 +118,17 @@ class App(ctk.CTk):
                 is_active = inst["is_active"]
                 state = inst["state"]
                 pid = inst["pid"]
+                is_external = inst.get("is_external", False)
                 
-                is_parent = (slot_idx == self.account_manager.parent_slot_id)
+                is_parent = (not is_external and slot_idx == self.account_manager.parent_slot_id)
                 display_name = custom_label if custom_label else username
 
-                row_border = "#ff3333" if is_parent and is_active else "#00FF66" if is_active else "#333333"
+                # Visual distinction: Orange border for external/Xbox instances, Red for parent, Green for active regular slots
+                if is_external:
+                    row_border = "#ffaa00"
+                else:
+                    row_border = "#ff3333" if is_parent and is_active else "#00FF66" if is_active else "#333333"
+
                 row_frame = ctk.CTkFrame(
                     self.account_scroll_frame, fg_color="#1a1a1a", 
                     border_color=row_border, border_width=1, corner_radius=6,
@@ -138,46 +145,67 @@ class App(ctk.CTk):
                 row_frame.bind("<Enter>", on_enter)
                 row_frame.bind("<Leave>", on_leave)
 
-                # Slot Badge
+                # Slot / External Badge
+                badge_text = f"#{slot_idx}" if not is_external else f"{slot_idx}"
+                badge_color = "#ffaa00" if is_external else "#00FF66"
                 slot_lbl = ctk.CTkLabel(
-                    row_frame, text=f"#{slot_idx}", font=ctk.CTkFont(size=11, weight="bold"),
-                    text_color="#00FF66", width=45
+                    row_frame, text=badge_text, font=ctk.CTkFont(size=11, weight="bold"),
+                    text_color=badge_color, width=55
                 )
                 slot_lbl.pack(side="left", padx=(10, 5), pady=8)
 
                 # Account Name / Custom Label Display
                 name_lbl = ctk.CTkLabel(
                     row_frame, text=display_name, font=ctk.CTkFont(size=12, weight="bold"),
-                    text_color="#ffffff", width=200, anchor="w"
+                    text_color="#ffffff", width=190, anchor="w"
                 )
                 name_lbl.pack(side="left", padx=5, pady=8)
 
                 # State Badge
-                badge_color = "#00FF66" if "Focus" in state else "#ffaa00" if "Idle" in state else "#666666"
+                state_color = "#ffaa00" if is_external else ("#00FF66" if "Focus" in state else "#ffaa00" if "Idle" in state else "#666666")
                 status_badge = ctk.CTkLabel(
                     row_frame, text=state, font=ctk.CTkFont(size=10, weight="bold"),
-                    text_color=badge_color, width=110
+                    text_color=state_color, width=105
                 )
                 status_badge.pack(side="left", padx=5, pady=8)
 
-                # Launch / Kill Button
+                # Action Buttons (Different handling for External vs Regular slots)
                 btn_state = "disabled" if self.is_launching_lock else "normal"
-                if is_active and pid != 0:
+                if is_external:
+                    # Close Button for External PID
                     kill_btn = ctk.CTkButton(
                         row_frame, text="Close", font=ctk.CTkFont(size=10, weight="bold"),
-                        width=65, height=26, fg_color="#4d0000", hover_color="#800000",
+                        width=55, height=26, fg_color="#4d0000", hover_color="#800000",
                         text_color="#ff9999", state=btn_state,
                         command=lambda p=pid: self.terminate_single_pid_action(p)
                     )
-                    kill_btn.pack(side="right", padx=10, pady=8)
-                else:
-                    launch_btn = ctk.CTkButton(
-                        row_frame, text="Launch", font=ctk.CTkFont(size=10, weight="bold"),
-                        width=65, height=26, fg_color="#002b11", hover_color="#004d1f",
-                        text_color="#00FF66", state=btn_state,
-                        command=lambda idx=slot_idx: self.launch_account_thread(idx)
+                    kill_btn.pack(side="right", padx=(2, 10), pady=8)
+
+                    # Claim / Label Button for External PID
+                    claim_btn = ctk.CTkButton(
+                        row_frame, text="Claim", font=ctk.CTkFont(size=10, weight="bold"),
+                        width=55, height=26, fg_color="#332200", hover_color="#664400",
+                        text_color="#ffaa00", state=btn_state,
+                        command=lambda p=pid, curr=custom_label: self.prompt_claim_external(p, curr)
                     )
-                    launch_btn.pack(side="right", padx=10, pady=8)
+                    claim_btn.pack(side="right", padx=2, pady=8)
+                else:
+                    if is_active and pid != 0:
+                        kill_btn = ctk.CTkButton(
+                            row_frame, text="Close", font=ctk.CTkFont(size=10, weight="bold"),
+                            width=65, height=26, fg_color="#4d0000", hover_color="#800000",
+                            text_color="#ff9999", state=btn_state,
+                            command=lambda p=pid: self.terminate_single_pid_action(p)
+                        )
+                        kill_btn.pack(side="right", padx=10, pady=8)
+                    else:
+                        launch_btn = ctk.CTkButton(
+                            row_frame, text="Launch", font=ctk.CTkFont(size=10, weight="bold"),
+                            width=65, height=26, fg_color="#002b11", hover_color="#004d1f",
+                            text_color="#00FF66", state=btn_state,
+                            command=lambda idx=slot_idx: self.launch_account_thread(idx)
+                        )
+                        launch_btn.pack(side="right", padx=10, pady=8)
 
         # Terminate All Instances Button at the bottom of Accounts tab
         btn_terminate_all = ctk.CTkButton(
@@ -187,6 +215,19 @@ class App(ctk.CTk):
             text_color="#ff3333", command=self.terminate_all_roblox_thread
         )
         btn_terminate_all.pack(fill="x")
+
+    def prompt_claim_external(self, pid: int, current_label: str):
+        """Prompt user to label or claim an external/Xbox instance into the ephemeral database."""
+        dialog = ctk.CTkInputDialog(
+            text=f"Enter a label for External Instance (PID: {pid}) e.g., Xbox Alt:", 
+            title="Claim External Instance"
+        )
+        new_label = dialog.get_input()
+        if new_label is not None:
+            label_text = new_label.strip() if new_label.strip() else "Manually Launched / Xbox"
+            self.account_manager.claim_external_instance(pid, label_text)
+            self.render_current_tab()
+            self.status_label.configure(text=f"Status: Claimed external instance PID {pid}.")
 
     def render_manager_tab(self, instances):
         # Add Account Button at the top of Manager tab
