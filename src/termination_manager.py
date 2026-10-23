@@ -1,6 +1,7 @@
 import subprocess
 from handle_manager import get_roblox_pids
 
+
 def terminate_all_roblox() -> int:
     pids = get_roblox_pids()
     if not pids:
